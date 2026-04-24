@@ -1,0 +1,59 @@
+/* ── NovaHSEQ ISO App — SPA Router ── */
+const Pages = {};
+
+const Router = {
+  current: null,
+
+  register(name, renderFn) {
+    Pages[name] = renderFn;
+  },
+
+  go(name, params = {}) {
+    const container = document.getElementById('page-container');
+    if (!container) return;
+    // Auth guard
+    if (name !== 'login' && !Api.isLoggedIn()) {
+      name = 'login';
+    }
+    if (!Pages[name]) {
+      console.warn('Page not found:', name);
+      return;
+    }
+    this.current = name;
+    container.innerHTML = '';
+    const el = Pages[name](params);
+    if (el) container.appendChild(el);
+    window.scrollTo(0, 0);
+  },
+
+  back() {
+    history.back();
+  }
+};
+
+// Global toast
+function showToast(msg, type = '') {
+  let t = document.querySelector('.app-toast');
+  if (!t) { t = document.createElement('div'); t.className = 'app-toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.className = 'app-toast ' + type;
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// Format date
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function daysLeft(d) {
+  if (!d) return null;
+  return Math.ceil((new Date(d) - new Date()) / 86400000);
+}
+
+window.Router = Router;
+window.showToast = showToast;
+window.fmtDate = fmtDate;
+window.daysLeft = daysLeft;

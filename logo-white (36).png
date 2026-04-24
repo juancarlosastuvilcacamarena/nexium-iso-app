@@ -1,0 +1,796 @@
+/* ── Nexium ISO App — Main ── */
+
+// ── Login Page ────────────────────────────────────────────────────────────────
+Router.register('login', () => {
+  const wrap = document.createElement('div');
+  wrap.className = 'login-wrap';
+  const co = Api.getCompany();
+  const coColor  = co?.color  || '#2563eb';
+  const coName   = co?.name   || 'Nexium ISO';
+  const coLogo   = co?.logo   || null;
+  const avatarHtml = coLogo
+    ? \`<img src="\${coLogo}" style="width:100%;height:100%;object-fit:contain;border-radius:16px">\`
+    : \`🛡️\`;
+
+  wrap.innerHTML = \`
+    <div class="login-logo">
+      <div class="login-shield" style="background:\${coColor};font-size:\${coLogo?'0':'36'}px">\${avatarHtml}</div>
+      <h1>\${coName}</h1>
+      <p>Sistema de Gestión ISO</p>
+      \${co ? \`<button onclick="Router.go('company_select')"
+        style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+               border-radius:20px;padding:5px 14px;color:var(--nova-muted);font-size:12px;cursor:pointer;
+               font-family:inherit">Cambiar empresa</button>\` : ''}
+    </div>
+    <div class="login-card">
+      <div class="login-error" id="loginError"></div>\`;
+      <div class="field">
+        <label>Correo electrónico</label>
+        <input type="email" id="loginEmail" placeholder="tu@empresa.com" autocomplete="email" inputmode="email">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn-primary" id="loginBtn">Iniciar sesión</button>
+      <p style="text-align:center;margin:16px 0 0;font-size:12px;color:var(--nova-muted)">
+        ¿Problemas para acceder? Contacta a tu administrador SST
+      </p>
+    </div>
+    <p style="text-align:center;margin-top:24px;font-size:11px;color:rgba(148,163,184,.5)">
+      Demo: demo@novahseq.com / demo123
+    </p>
+  \`;
+
+  const emailIn = wrap.querySelector('#loginEmail');
+  const passIn  = wrap.querySelector('#loginPass');
+  const btn     = wrap.querySelector('#loginBtn');
+  const errDiv  = wrap.querySelector('#loginError');
+
+  const doLogin = async () => {
+    const email = emailIn.value.trim();
+    const pass  = passIn.value;
+    if (!email || !pass) { errDiv.textContent = 'Ingresa tu email y contraseña.'; errDiv.classList.add('show'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Iniciando sesión…';
+    const res = await Api.login(email, pass);
+    if (res.ok) {
+      const role = res.user?.role || Api.getUser()?.role || 'worker';
+      buildShell(role);
+      if (role === 'superadmin')    Router.go('superadmin_dashboard');
+      else if (role === 'company_admin') Router.go('admin_dashboard');
+      else                          Router.go('dashboard');
+    } else {
+      errDiv.textContent = res.message;
+      errDiv.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Iniciar sesión';
+    }
+  };
+
+  btn.addEventListener('click', doLogin);
+  passIn.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  return wrap;
+});
+
+// ── Tab Shell ─────────────────────────────────────────────────────────────────
+function buildShell(role = 'worker') {
+  const container = document.getElementById('page-container');
+  container.innerHTML = `
+    <div id="main-view" style="padding-bottom:60px;min-height:100vh;overflow-y:auto;"></div>
+    <div class="bottom-nav">
+      \${role === 'superadmin' ? `
+        <button class="tab-btn active" data-page="superadmin_dashboard"><span class="tab-icon">🌐</span><span class="tab-label">Global</span></button>
+        <button class="tab-btn" data-page="profile"><span class="tab-icon">👤</span><span class="tab-label">Perfil</span></button>
+      ` : role === 'company_admin' ? `
+        <button class="tab-btn active" data-page="admin_dashboard"><span class="tab-icon">📊</span><span class="tab-label">Inicio</span></button>
+        <button class="tab-btn" data-page="admin_tasks"><span class="tab-icon">✅</span><span class="tab-label">Tareas</span></button>
+        <button class="tab-btn tab-center" data-page="admin_incidents"><span class="tab-icon">🚨</span><span class="tab-label">Incidentes</span></button>
+        <button class="tab-btn" data-page="iperc"><span class="tab-icon">🛡️</span><span class="tab-label">Riesgos</span></button>
+        <button class="tab-btn" data-page="profile"><span class="tab-icon">👤</span><span class="tab-label">Perfil</span></button>
+      ` : `
+        <button class="tab-btn active" data-page="dashboard"><span class="tab-icon">📊</span><span class="tab-label">Inicio</span></button>
+        <button class="tab-btn" data-page="tasks"><span class="tab-icon">✅</span><span class="tab-label">Tareas</span></button>
+        <button class="tab-btn tab-center" data-page="incidents"><span class="tab-icon">🚨</span><span class="tab-label">Reportar</span></button>
+        <button class="tab-btn" data-page="iperc"><span class="tab-icon">🛡️</span><span class="tab-label">Riesgos</span></button>
+        <button class="tab-btn" data-page="profile"><span class="tab-icon">👤</span><span class="tab-label">Perfil</span></button>
+      `}
+    </div>
+  `;
+
+  // Inject bottom nav styles
+  if (!document.getElementById('nav-style')) {
+    const s = document.createElement('style');
+    s.id = 'nav-style';
+    s.textContent = `
+      .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: #0f172a; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; z-index: 100; padding: 0 4px; padding-bottom: env(safe-area-inset-bottom); }
+      .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: none; border: none; cursor: pointer; padding: 6px 2px; color: var(--nova-muted); transition: color .15s; -webkit-tap-highlight-color: transparent; }
+      .tab-btn.active { color: var(--nova-blue); }
+      .tab-icon  { font-size: 20px; line-height: 1; }
+      .tab-label { font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+      .tab-center .tab-icon { font-size: 22px; background: linear-gradient(135deg, #2563eb, #7c3aed); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+      .tab-center.active .tab-icon { box-shadow: 0 0 0 3px rgba(37,99,235,.3); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Tab navigation
+  container.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      navigateTo(btn.dataset.page);
+    });
+  });
+
+  // Override Router.go for shell
+  Router.go = (name, params = {}) => {
+    if (!Api.isLoggedIn()) { Router.go = origGo; Router.go('login'); return; }
+    navigateTo(name, params);
+    // Sync tab highlight
+    container.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.page === name);
+    });
+  };
+}
+
+const origGo = Router.go.bind(Router);
+
+function navigateTo(name, params = {}) {
+  const view = document.getElementById('main-view');
+  if (!view || !Pages[name]) return;
+  view.innerHTML = '';
+  const el = Pages[name](params);
+  if (el) view.appendChild(el);
+  view.scrollTo(0, 0);
+}
+
+// ── Dashboard Page ────────────────────────────────────────────────────────────
+Router.register('dashboard', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="loading-wrap"><div class="spinner"></div></div>`;
+
+  Api.getDashboard().then(res => {
+    const d = res?.data || {};
+    const user = Api.getUser() || {};
+    const name = (user.full_name || 'Trabajador').split(' ')[0];
+
+    wrap.innerHTML = `
+      <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:12px;color:var(--nova-muted);font-weight:600">Buenos días</div>
+            <div style="font-size:20px;font-weight:900;color:var(--nova-text)">${name} 👋</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;">🛡️</div>
+        </div>
+      </div>
+
+      <div class="hero-banner">
+        <div class="hero-title">${d.company_name || user.company_name || 'Nexium'}</div>
+        <div class="hero-sub">Sistema de Gestión ISO · Portal del trabajador</div>
+      </div>
+
+      <div class="section-title">Mis KPIs</div>
+      <div class="kpi-grid">
+        <div class="kpi-card amber" onclick="Router.go('tasks')">
+          <div class="kpi-icon">✅</div>
+          <div class="kpi-num">${d.tasks_pending ?? '—'}</div>
+          <div class="kpi-lbl">Tareas pendientes</div>
+        </div>
+        <div class="kpi-card blue" onclick="Router.go('iperc')">
+          <div class="kpi-icon">🛡️</div>
+          <div class="kpi-num">${d.iperc_count ?? '—'}</div>
+          <div class="kpi-lbl">IPERCs activos</div>
+        </div>
+        <div class="kpi-card red" onclick="Router.go('incidents')">
+          <div class="kpi-icon">🚨</div>
+          <div class="kpi-num">${d.incidents_reported ?? '—'}</div>
+          <div class="kpi-lbl">Incidentes reportados</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon">🎓</div>
+          <div class="kpi-num">${d.trainings_done ?? '—'}</div>
+          <div class="kpi-lbl">Capacitaciones</div>
+        </div>
+        <div class="kpi-card purple" onclick="Router.go('incidents')">
+          <div class="kpi-icon">✍️</div>
+          <div class="kpi-num">${d.signatures_pending ?? '—'}</div>
+          <div class="kpi-lbl">Firmas pendientes</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon">⚠️</div>
+          <div class="kpi-num">${d.nc_open ?? '—'}</div>
+          <div class="kpi-lbl">NC abiertas</div>
+        </div>
+      </div>
+
+      <div class="section-title">Acción rápida</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 24px">
+        <button onclick="Router.go('incidents')" style="background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:16px 12px;color:#fca5a5;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;">
+          <span style="font-size:22px">🚨</span>Reportar incidente
+        </button>
+        <button onclick="Router.go('tasks')" style="background:rgba(37,99,235,.12);border:1px solid rgba(37,99,235,.25);border-radius:14px;padding:16px 12px;color:#93c5fd;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;">
+          <span style="font-size:22px">✅</span>Ver mis tareas
+        </button>
+      </div>
+    `;
+  });
+  return wrap;
+});
+
+// ── Tasks Page ────────────────────────────────────────────────────────────────
+Router.register('tasks', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <h2 style="margin:0;font-size:18px;font-weight:900">Mis tareas</h2>
+      <p style="margin:2px 0 0;font-size:12px;color:var(--nova-muted)">Asignadas por el equipo SST</p>
+    </div>
+    <div id="tasks-content"><div class="loading-wrap"><div class="spinner"></div></div></div>
+  `;
+
+  Api.getTasks().then(res => {
+    const tasks = res?.data || [];
+    const content = wrap.querySelector('#tasks-content');
+
+    if (!tasks.length) {
+      content.innerHTML = `<div class="empty-wrap"><div class="empty-icon">✅</div><p class="empty-text">¡No tienes tareas pendientes!<br>Todo al día.</p></div>`;
+      return;
+    }
+
+    const filters = `
+      <div style="display:flex;gap:8px;padding:12px 16px;overflow-x:auto;scrollbar-width:none;">
+        ${['Todas','Pendientes','En progreso','Completadas'].map((l,i) =>
+          `<button onclick="filterTasks(this,'${['','open','in_progress','completed'][i]}')" class="filter-pill${i===0?' active':''}" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${i===0?'var(--nova-blue)':'rgba(255,255,255,.1)'};background:${i===0?'rgba(37,99,235,.15)':'transparent'};color:${i===0?'#93c5fd':'var(--nova-muted)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">${l}</button>`
+        ).join('')}
+      </div>
+    `;
+
+    const taskHtml = tasks.map(t => `
+      <div class="task-item" data-status="${t.status}" data-id="${t.id}" onclick="openTask(${t.id})">
+        <div class="task-priority ${t.priority}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="task-title">${t.title}</div>
+          <div class="task-sub">${t.area} · Vence ${fmtDate(t.due_date)}</div>
+          <span class="task-badge badge-${t.status}">${{open:'Pendiente',in_progress:'En progreso',completed:'Completada'}[t.status]||t.status}</span>
+        </div>
+        <span style="color:var(--nova-muted);font-size:18px;margin-top:2px">›</span>
+      </div>
+    `).join('');
+
+    content.innerHTML = filters + `<div id="tasks-list" style="padding-top:4px">${taskHtml}</div>`;
+
+    window._tasks = tasks;
+    window.filterTasks = (btn, status) => {
+      document.querySelectorAll('.filter-pill').forEach(b => {
+        b.style.borderColor = 'rgba(255,255,255,.1)'; b.style.background = 'transparent'; b.style.color = 'var(--nova-muted)'; b.classList.remove('active');
+      });
+      btn.style.borderColor = 'var(--nova-blue)'; btn.style.background = 'rgba(37,99,235,.15)'; btn.style.color = '#93c5fd'; btn.classList.add('active');
+      document.querySelectorAll('.task-item').forEach(el => {
+        el.style.display = (!status || el.dataset.status === status) ? '' : 'none';
+      });
+    };
+    window.openTask = (id) => {
+      const t = window._tasks.find(x => x.id === id);
+      if (!t) return;
+      showTaskDetail(t);
+    };
+  });
+
+  return wrap;
+});
+
+function showTaskDetail(t) {
+  const existing = document.getElementById('task-detail-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'task-detail-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:flex;align-items:flex-end;';
+
+  const dl = daysLeft(t.due_date);
+  const dlColor = dl === null ? 'var(--nova-muted)' : dl < 0 ? 'var(--nova-red)' : dl <= 3 ? 'var(--nova-amber)' : 'var(--nova-green)';
+  const dlText  = dl === null ? '—' : dl < 0 ? `Vencida ${Math.abs(dl)}d` : dl === 0 ? 'Hoy' : `${dl} días`;
+
+  overlay.innerHTML = `
+    <div style="background:#1e293b;border-radius:20px 20px 0 0;padding:24px;width:100%;max-height:85vh;overflow-y:auto;border-top:1px solid rgba(255,255,255,.1)">
+      <div style="width:40px;height:4px;background:rgba(255,255,255,.2);border-radius:4px;margin:0 auto 20px;"></div>
+      <h3 style="font-size:17px;font-weight:900;color:var(--nova-text);margin:0 0 8px">${t.title}</h3>
+      <p style="font-size:13px;color:var(--nova-muted);margin:0 0 20px;line-height:1.6">${t.description || '—'}</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+        <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--nova-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Área</div>
+          <div style="font-size:14px;font-weight:700;color:var(--nova-text)">${t.area||'—'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--nova-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Vencimiento</div>
+          <div style="font-size:14px;font-weight:700;color:${dlColor}">${dlText}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--nova-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Asignado por</div>
+          <div style="font-size:13px;font-weight:700;color:var(--nova-text)">${t.assigned_by||'—'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--nova-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Prioridad</div>
+          <div style="font-size:14px;font-weight:700;color:var(--nova-${t.priority==='high'||t.priority==='critical'?'red':'amber'})">${{high:'Alta',medium:'Media',low:'Baja',critical:'Crítica'}[t.priority]||t.priority}</div>
+        </div>
+      </div>
+      ${t.status !== 'completed' ? `
+        <div style="display:flex;gap:10px">
+          ${t.status === 'open' ? `<button onclick="markTask(${t.id},'in_progress',this)" style="flex:1;background:rgba(217,119,6,.2);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:12px;color:#fcd34d;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">⏳ Iniciar</button>` : ''}
+          <button onclick="markTask(${t.id},'completed',this)" style="flex:1;background:rgba(22,163,74,.2);border:1px solid rgba(22,163,74,.3);border-radius:12px;padding:12px;color:#86efac;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">✅ Completar</button>
+        </div>
+      ` : `<div style="text-align:center;padding:12px;color:#86efac;font-weight:700">✅ Tarea completada</div>`}
+    </div>
+  `;
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  window.markTask = async (id, status, btn) => {
+    btn.disabled = true; btn.textContent = '…';
+    await Api.updateTask(id, status);
+    overlay.remove();
+    showToast(status === 'completed' ? '✅ Tarea completada' : '⏳ Tarea iniciada', 'success');
+    Router.go('tasks');
+  };
+}
+
+// ── Incidents Page ─────────────────────────────────────────────────────────────
+Router.register('incidents', () => {
+  let severity = 'medium';
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <h2 style="margin:0;font-size:18px;font-weight:900">Reportar incidente</h2>
+      <p style="margin:2px 0 0;font-size:12px;color:var(--nova-muted)">Near-miss, accidente o condición insegura</p>
+    </div>
+    <div style="padding:16px 0 0">
+      <div style="margin:0 16px 14px;background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.2);border-radius:12px;padding:12px 14px;font-size:13px;color:#fca5a5;display:flex;gap:10px;align-items:center;">
+        <span style="font-size:18px;flex-shrink:0">🛡️</span>
+        <span>Tu reporte es <strong>confidencial</strong>. Reportar es un acto de responsabilidad, no una denuncia.</span>
+      </div>
+
+      <div class="form-section">
+        <h3>Tipo de evento</h3>
+        <div class="field">
+          <select id="inc-type">
+            <option value="near_miss">⚠️ Casi-accidente (near miss)</option>
+            <option value="unsafe_condition">🚧 Condición insegura</option>
+            <option value="unsafe_act">🚨 Acto inseguro</option>
+            <option value="incident">🔶 Incidente</option>
+            <option value="minor_accident">🩹 Accidente leve</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Título del evento *</label>
+          <input type="text" id="inc-title" placeholder="Ej: Caída de objeto en almacén norte" maxlength="200">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>Severidad estimada</h3>
+        <div class="sev-grid">
+          <button class="sev-btn" data-sev="low"      onclick="selectSev(this,'low')">🟢 Baja</button>
+          <button class="sev-btn sel-medium" data-sev="medium"  onclick="selectSev(this,'medium')">🟡 Media</button>
+          <button class="sev-btn" data-sev="high"     onclick="selectSev(this,'high')">🟠 Alta</button>
+          <button class="sev-btn" data-sev="critical" onclick="selectSev(this,'critical')">🔴 Crítica</button>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>Ubicación</h3>
+        <div class="field">
+          <label>Área / Lugar</label>
+          <input type="text" id="inc-area" placeholder="Almacén, Planta, Oficina...">
+        </div>
+        <div class="field">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="inc-datetime" value="${new Date().toISOString().slice(0,16)}">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>Descripción</h3>
+        <div class="field">
+          <label>¿Qué ocurrió? *</label>
+          <textarea id="inc-desc" rows="4" placeholder="Describe qué ocurrió, cómo, quién estuvo involucrado y las condiciones del entorno al momento del evento..."></textarea>
+        </div>
+        <div class="field">
+          <label>Acciones inmediatas tomadas</label>
+          <textarea id="inc-actions" rows="2" placeholder="Ej: Se aisló el área, se brindó primeros auxilios..."></textarea>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 32px">
+        <button class="btn-primary" id="inc-submit">🚨 Enviar reporte</button>
+      </div>
+    </div>
+  `;
+
+  window.selectSev = (btn, sev) => {
+    severity = sev;
+    wrap.querySelectorAll('.sev-btn').forEach(b => {
+      b.className = 'sev-btn' + (b.dataset.sev === sev ? ' sel-' + sev : '');
+    });
+  };
+
+  wrap.querySelector('#inc-submit').addEventListener('click', async () => {
+    const title = wrap.querySelector('#inc-title').value.trim();
+    const desc  = wrap.querySelector('#inc-desc').value.trim();
+    if (!title || !desc) { showToast('Completa el título y la descripción', 'error'); return; }
+
+    const btn = wrap.querySelector('#inc-submit');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+
+    const payload = {
+      event_type:       wrap.querySelector('#inc-type').value,
+      title, severity,
+      area:             wrap.querySelector('#inc-area').value.trim(),
+      event_datetime:   wrap.querySelector('#inc-datetime').value,
+      description:      desc,
+      immediate_actions:wrap.querySelector('#inc-actions').value.trim(),
+    };
+
+    await Api.submitIncident(payload);
+    showToast('✅ Reporte enviado correctamente', 'success');
+    Router.go('dashboard');
+  });
+
+  return wrap;
+});
+
+// ── IPERC Page ─────────────────────────────────────────────────────────────────
+Router.register('iperc', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <h2 style="margin:0;font-size:18px;font-weight:900">Mis riesgos</h2>
+      <p style="margin:2px 0 0;font-size:12px;color:var(--nova-muted)">IPERCs aprobados de mi empresa</p>
+    </div>
+    <div id="iperc-content"><div class="loading-wrap"><div class="spinner"></div></div></div>
+  `;
+
+  Api.getIperc().then(res => {
+    const records = res?.data || [];
+    const content = wrap.querySelector('#iperc-content');
+
+    if (!records.length) {
+      content.innerHTML = `<div class="empty-wrap"><div class="empty-icon">🛡️</div><p class="empty-text">No hay IPERCs disponibles.</p></div>`;
+      return;
+    }
+
+    window._ipercs = records;
+    window.openIperc = (id) => {
+      const rec = window._ipercs.find(r => r.id === id);
+      if (rec) showIpercDetail(rec);
+    };
+
+    content.innerHTML = records.map(r => {
+      const dl = daysLeft(r.validity_date);
+      const dlColor = dl === null ? 'var(--nova-muted)' : dl < 0 ? 'var(--nova-red)' : dl <= 30 ? 'var(--nova-amber)' : 'var(--nova-green)';
+      return `
+        <div class="risk-item" onclick="openIperc(${r.id})" style="cursor:pointer">
+          <div class="risk-head">
+            <div style="flex:1">
+              <div style="font-size:10px;color:var(--nova-muted);font-weight:600;margin-bottom:2px">${r.record_code}</div>
+              <div class="risk-name">${r.process_name}</div>
+              <div style="font-size:12px;color:var(--nova-muted);margin-top:2px">${r.activity_name || ''}</div>
+            </div>
+            <span style="color:var(--nova-muted);font-size:20px;margin-top:4px">›</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${r.area_name ? `<span style="font-size:11px;color:var(--nova-muted)">📍 ${r.area_name}</span>` : ''}
+            <span style="font-size:11px;color:var(--nova-muted)">⚠️ ${r.risk_count||0} riesgos</span>
+            ${r.high_risk_count > 0 ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(220,38,38,.2);color:#fca5a5;font-weight:700">${r.high_risk_count} alto/crítico</span>` : ''}
+            ${r.validity_date ? `<span style="font-size:11px;color:${dlColor}">📅 ${fmtDate(r.validity_date)}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  });
+
+  return wrap;
+});
+
+function showIpercDetail(rec) {
+  const existing = document.getElementById('iperc-detail-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'iperc-detail-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;overflow-y:auto;padding:20px 0 0;';
+
+  const levelLabel = { low:'Bajo', medium:'Medio', high:'Alto', critical:'Crítico' };
+
+  overlay.innerHTML = `
+    <div style="background:#0f172a;border-radius:20px 20px 0 0;min-height:calc(100vh - 20px);padding:0 0 80px">
+      <div style="position:sticky;top:0;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:12px;z-index:10">
+        <button onclick="document.getElementById('iperc-detail-overlay').remove()" style="background:rgba(255,255,255,.1);border:none;border-radius:50%;width:36px;height:36px;color:var(--nova-text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">‹</button>
+        <div>
+          <div style="font-size:16px;font-weight:900;color:var(--nova-text)">${rec.process_name}</div>
+          <div style="font-size:12px;color:var(--nova-muted)">${rec.record_code}</div>
+        </div>
+      </div>
+      <div style="padding:16px">
+        <div style="background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#93c5fd;display:flex;gap:8px;align-items:flex-start;">
+          <span style="font-size:16px;flex-shrink:0">💡</span>
+          <span>Conocer tus riesgos te ayuda a prevenir accidentes. Si detectas un peligro no listado, repórtalo.</span>
+        </div>
+        ${(rec.items||[]).map(item => `
+          <div class="risk-item" style="margin:0 0 10px">
+            <div class="risk-head">
+              <div class="risk-name">${item.hazard}</div>
+              <span class="risk-level ${item.level}">${levelLabel[item.level]||item.level}</span>
+            </div>
+            <div class="risk-desc"><strong style="color:var(--nova-text)">Riesgo:</strong> ${item.risk}</div>
+            <div class="risk-desc" style="margin-top:4px"><strong style="color:var(--nova-text)">Control:</strong> ${item.control}</div>
+            ${item.epp ? `<div class="risk-desc" style="margin-top:4px"><strong style="color:var(--nova-text)">EPP:</strong> ${item.epp}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ── Profile Page ──────────────────────────────────────────────────────────────
+Router.register('profile', () => {
+  const user = Api.getUser() || {};
+  const initials = (user.full_name||'U').split(' ').map(w=>w[0]).slice(0,2).join('');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <h2 style="margin:0;font-size:18px;font-weight:900">Mi perfil</h2>
+    </div>
+    <div class="profile-hero">
+      <div class="avatar-circle">${user.avatar_url ? `<img src="${user.avatar_url}">` : initials}</div>
+      <div class="profile-name">${user.full_name||'Trabajador'}</div>
+      <div class="profile-email">${user.email||''}</div>
+      <span class="profile-badge">${user.job_title||'Trabajador'}</span>
+      <div class="info-row">
+        <div class="info-block"><div class="info-val">${user.company_name||'—'}</div><div class="info-key">Empresa</div></div>
+        <div class="info-block"><div class="info-val">Perú</div><div class="info-key">País</div></div>
+      </div>
+    </div>
+    <div style="margin:0 16px 16px;background:var(--nova-card);border-radius:16px;overflow:hidden;border:1px solid var(--nova-border);">
+      <button class="menu-item" onclick="Router.go('dashboard')"><span class="icon">📊</span><span>Dashboard</span><span class="chevron">›</span></button>
+      <button class="menu-item" onclick="Router.go('tasks')"><span class="icon">✅</span><span>Mis tareas</span><span class="chevron">›</span></button>
+      <button class="menu-item" onclick="Router.go('iperc')"><span class="icon">🛡️</span><span>Mis riesgos IPERC</span><span class="chevron">›</span></button>
+      <button class="menu-item" onclick="Router.go('incidents')"><span class="icon">🚨</span><span>Reportar incidente</span><span class="chevron">›</span></button>
+    </div>
+    <div style="margin:0 16px 16px;background:var(--nova-card);border-radius:16px;overflow:hidden;border:1px solid var(--nova-border);">
+      <button class="menu-item" style="color:#fca5a5" onclick="doLogout()"><span class="icon">🚪</span><span>Cerrar sesión</span></button>
+    </div>
+    <p style="text-align:center;font-size:11px;color:rgba(148,163,184,.4);padding-bottom:20px">Nexium ISO Suite v1.0</p>
+  `;
+
+  window.doLogout = () => {
+    Api.logout(false); // keep company remembered
+    Router.go = origGo;
+    document.getElementById('page-container').innerHTML = '';
+    if (document.getElementById('nav-style')) document.getElementById('nav-style').remove();
+    Router.go('login'); // go back to login (company pre-selected)
+  };
+
+  return wrap;
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  Api.init();
+  if (Api.isLoggedIn()) {
+    const role = Api.getUser()?.role || 'worker';
+    buildShell(role);
+    if (role === 'superadmin')         Router.go('superadmin_dashboard');
+    else if (role === 'company_admin') Router.go('admin_dashboard');
+    else                               Router.go('dashboard');
+  } else if (Api.getCompany()) {
+    // Company remembered — go straight to login
+    Router.go('login');
+  } else {
+    // First time — show company picker
+    Router.go('company_select');
+  }
+});
+
+// ── Admin Dashboard (company_admin) ───────────────────────────────────────────
+Router.register('admin_dashboard', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="loading-wrap"><div class="spinner"></div></div>`;
+
+  Api.getDashboard().then(res => {
+    const d = res?.data || {};
+    const user = Api.getUser() || {};
+    const name = (user.full_name || 'Admin').split(' ')[0];
+    wrap.innerHTML = `
+      <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:12px;color:var(--nova-muted);font-weight:600">Panel empresa</div>
+            <div style="font-size:20px;font-weight:900;color:var(--nova-text)">${name} 👋</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;">🏢</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:var(--nova-muted)">${user.company_name || ''}</div>
+      </div>
+
+      <div class="hero-banner">
+        <div class="hero-title">Panel de administración</div>
+        <div class="hero-sub">Sistema de Gestión ISO · Empresa</div>
+      </div>
+
+      <div class="section-title">KPIs del sistema</div>
+      <div class="kpi-grid">
+        <div class="kpi-card amber">
+          <div class="kpi-icon">⚠️</div>
+          <div class="kpi-num">${d.nc_open ?? '—'}</div>
+          <div class="kpi-lbl">NC abiertas</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon">🚨</div>
+          <div class="kpi-num">${d.incidents_reported ?? '—'}</div>
+          <div class="kpi-lbl">Incidentes</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-icon">🛡️</div>
+          <div class="kpi-num">${d.iperc_count ?? '—'}</div>
+          <div class="kpi-lbl">IPERCs activos</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon">🎓</div>
+          <div class="kpi-num">${d.trainings_done ?? '—'}</div>
+          <div class="kpi-lbl">Capacitaciones</div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-icon">✅</div>
+          <div class="kpi-num">${d.tasks_pending ?? '—'}</div>
+          <div class="kpi-lbl">Tareas pendientes</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-icon">✍️</div>
+          <div class="kpi-num">${d.signatures_pending ?? '—'}</div>
+          <div class="kpi-lbl">Firmas pendientes</div>
+        </div>
+      </div>
+
+      <div class="section-title">Acceso rápido</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 8px">
+        <button onclick="Router.go('admin_incidents')" style="background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:16px 12px;color:#fca5a5;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+          <span style="font-size:22px">🚨</span>Ver incidentes
+        </button>
+        <button onclick="Router.go('admin_tasks')" style="background:rgba(37,99,235,.12);border:1px solid rgba(37,99,235,.25);border-radius:14px;padding:16px 12px;color:#93c5fd;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+          <span style="font-size:22px">✅</span>Tareas equipo
+        </button>
+        <button onclick="Router.go('iperc')" style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.25);border-radius:14px;padding:16px 12px;color:#fcd34d;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+          <span style="font-size:22px">🛡️</span>IPERCs
+        </button>
+        <button onclick="Router.go('profile')" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);border-radius:14px;padding:16px 12px;color:#c4b5fd;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+          <span style="font-size:22px">👤</span>Mi perfil
+        </button>
+      </div>
+      <div style="padding:0 16px 24px;margin-top:6px">
+        <button onclick="openWebAdmin()" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;color:var(--nova-muted);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px">🌐</span>Abrir panel web completo →
+        </button>
+      </div>
+    `;
+    window.openWebAdmin = () => window.open('https://iso.novahseq.com/company-admin/standards_hub.php', '_blank');
+  });
+  return wrap;
+});
+
+// ── Admin Incidents view ──────────────────────────────────────────────────────
+Router.register('admin_incidents', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:12px">
+      <button onclick="Router.go('admin_dashboard')" style="background:rgba(255,255,255,.08);border:none;border-radius:50%;width:34px;height:34px;color:var(--nova-text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+      <div><h2 style="margin:0;font-size:17px;font-weight:900">Incidentes</h2></div>
+    </div>
+    <div id="inc-list-content"><div class="loading-wrap"><div class="spinner"></div></div></div>
+  `;
+  Api._req('GET', '/incidents.php').then(res => {
+    const items = res?.data || [];
+    const el = wrap.querySelector('#inc-list-content');
+    if (!items.length) {
+      el.innerHTML = `<div class="empty-wrap"><div class="empty-icon">🚨</div><p class="empty-text">Sin incidentes registrados.</p></div>`;
+      return;
+    }
+    el.innerHTML = items.map(i => `
+      <div class="task-item">
+        <div class="task-priority ${i.severity === 'critical' ? 'critical' : i.severity === 'high' ? 'high' : 'medium'}"></div>
+        <div style="flex:1">
+          <div class="task-title">${i.incident_code || '—'} · ${i.title}</div>
+          <div class="task-sub">${i.area || '—'} · ${fmtDate(i.created_at)}</div>
+          <span class="task-badge badge-${i.status === 'closed' ? 'completed' : 'open'}">${i.status || 'reportado'}</span>
+        </div>
+      </div>`).join('');
+  });
+  return wrap;
+});
+
+// ── Admin Tasks view ──────────────────────────────────────────────────────────
+Router.register('admin_tasks', () => {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:12px">
+      <button onclick="Router.go('admin_dashboard')" style="background:rgba(255,255,255,.08);border:none;border-radius:50%;width:34px;height:34px;color:var(--nova-text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+      <div><h2 style="margin:0;font-size:17px;font-weight:900">Tareas del equipo</h2></div>
+    </div>
+    <div id="atasks-content"><div class="loading-wrap"><div class="spinner"></div></div></div>
+  `;
+  Api.getTasks().then(res => {
+    const tasks = res?.data || [];
+    const el = wrap.querySelector('#atasks-content');
+    if (!tasks.length) {
+      el.innerHTML = `<div class="empty-wrap"><div class="empty-icon">✅</div><p class="empty-text">Sin tareas pendientes.</p></div>`;
+      return;
+    }
+    el.innerHTML = `<div style="padding-top:8px">` + tasks.map(t => `
+      <div class="task-item">
+        <div class="task-priority ${t.priority}"></div>
+        <div style="flex:1">
+          <div class="task-title">${t.title}</div>
+          <div class="task-sub">${t.area || '—'} · ${fmtDate(t.due_date)}</div>
+          <span class="task-badge badge-${t.status}">${{open:'Pendiente',in_progress:'En progreso',completed:'Completada'}[t.status]||t.status}</span>
+        </div>
+      </div>`).join('') + `</div>`;
+  });
+  return wrap;
+});
+
+// ── Superadmin Dashboard ──────────────────────────────────────────────────────
+Router.register('superadmin_dashboard', () => {
+  const user = Api.getUser() || {};
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div style="position:sticky;top:0;z-index:10;background:#0f172a;padding:16px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:12px;color:var(--nova-muted);font-weight:600">Super administrador</div>
+          <div style="font-size:20px;font-weight:900;color:var(--nova-text)">Nexium 🌐</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#7c3aed,#2563eb);border-radius:12px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;">⚙️</div>
+      </div>
+    </div>
+
+    <div class="hero-banner" style="background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(37,99,235,.15));border-color:rgba(124,58,237,.3)">
+      <div class="hero-title">Panel de control global</div>
+      <div class="hero-sub">Gestión de todas las empresas del sistema</div>
+    </div>
+
+    <div class="section-title">Acciones principales</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 12px">
+      <button onclick="openWeb('superadmin/dashboard.php')" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);border-radius:14px;padding:16px 12px;color:#c4b5fd;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+        <span style="font-size:22px">🏢</span>Empresas
+      </button>
+      <button onclick="openWeb('superadmin/users.php')" style="background:rgba(37,99,235,.12);border:1px solid rgba(37,99,235,.25);border-radius:14px;padding:16px 12px;color:#93c5fd;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+        <span style="font-size:22px">👥</span>Usuarios
+      </button>
+      <button onclick="openWeb('superadmin/modules.php')" style="background:rgba(22,163,74,.12);border:1px solid rgba(22,163,74,.25);border-radius:14px;padding:16px 12px;color:#86efac;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+        <span style="font-size:22px">🔧</span>Módulos
+      </button>
+      <button onclick="openWeb('superadmin/reports.php')" style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.25);border-radius:14px;padding:16px 12px;color:#fcd34d;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;">
+        <span style="font-size:22px">📊</span>Reportes
+      </button>
+    </div>
+
+    <div style="padding:0 16px 24px">
+      <button onclick="openWeb('')" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;color:var(--nova-muted);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px">🌐</span>Abrir panel web completo →
+      </button>
+    </div>
+
+    <div style="margin:0 16px 16px;background:var(--nova-card);border-radius:16px;overflow:hidden;border:1px solid var(--nova-border)">
+      <button class="menu-item" style="color:#fca5a5" onclick="doLogout()">
+        <span class="icon">🚪</span><span>Cerrar sesión</span>
+      </button>
+    </div>
+  `;
+  window.openWeb = (path) => window.open('https://iso.novahseq.com/' + path, '_blank');
+  return wrap;
+});

@@ -1,0 +1,68 @@
+name: Build Nexium ISO APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # Permite ejecutar manualmente desde GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias npm
+        run: npm install
+
+      - name: Instalar Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Sincronizar Capacitor con Android
+        run: npx cap sync android
+
+      - name: Dar permisos a Gradle
+        run: chmod +x android/gradlew
+
+      - name: Compilar APK debug
+        run: |
+          cd android
+          ./gradlew assembleDebug \
+            -Dorg.gradle.daemon=false \
+            -Dorg.gradle.parallel=false \
+            --no-configuration-cache \
+            --stacktrace
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexium-iso-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Mostrar información del APK
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK" ]; then
+            SIZE=$(du -sh "$APK" | cut -f1)
+            echo "✅ APK compilado exitosamente"
+            echo "📦 Tamaño: $SIZE"
+            echo "📍 Listo para descargar desde la pestaña Actions"
+          else
+            echo "❌ No se encontró el APK"
+            exit 1
+          fi
